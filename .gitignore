@@ -1,0 +1,9 @@
+*.pth
+data/
+__pycache__/
+*.pyc
+checkpoints/
+evaluation_results.json
+pgd_results.json
+training_log.json
+.DS_Store
