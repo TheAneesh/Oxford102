@@ -219,10 +219,12 @@ def train(args):
     scheduler    = StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     best_weights = copy.deepcopy(model.state_dict())
     best_acc     = 0.0
+    history      = []   # per-epoch metrics for the JSON log
 
     for epoch in range(args.epochs):
         lrs = scheduler.get_last_lr()
         print(f"\nEpoch {epoch+1}/{args.epochs}  backbone_lr={lrs[0]:.2e}  head_lr={lrs[1]:.2e}")
+        epoch_record = {"epoch": epoch + 1, "backbone_lr": lrs[0], "head_lr": lrs[1]}
 
         for phase in ["train", "valid"]:
             model.train() if phase == "train" else model.eval()
@@ -251,8 +253,12 @@ def train(args):
                 best_weights = copy.deepcopy(model.state_dict())
                 marker       = "  ← best"
 
+            epoch_record[f"{phase}_loss"] = ep_loss
+            epoch_record[f"{phase}_acc"]  = ep_acc
+
             print(f"  {phase:5s} | loss {ep_loss:.4f}  acc {ep_acc:.4f}{marker}")
 
+        history.append(epoch_record)
         scheduler.step()
 
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -264,8 +270,24 @@ def train(args):
         "idx_to_name":      idx_to_name,
     }, best_ckpt)
 
-    print(f"\n✓ Best val acc : {best_acc:.4f}")
-    print(f"✓ Checkpoints  : {best_ckpt}  |  {final_ckpt}")
+    # Save training history as JSON
+    train_log = {
+        "best_val_acc": best_acc,
+        "epochs":       args.epochs,
+        "lr":           args.lr,
+        "batch_size":   args.batch_size,
+        "train_pct":    args.train_pct,
+        "valid_pct":    args.valid_pct,
+        "history":      history,
+    }
+    log_path = args.training_log
+    os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+    with open(log_path, "w") as f:
+        json.dump(train_log, f, indent=2)
+
+    print(f"\n✓ Best val acc  : {best_acc:.4f}")
+    print(f"✓ Checkpoints   : {best_ckpt}  |  {final_ckpt}")
+    print(f"✓ Training log  : {log_path}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -403,7 +425,8 @@ def get_args():
     parser.add_argument("--workers",    type=int,   default=2)
     parser.add_argument("--train_pct",  type=float, default=0.80, help="Fraction of data for training")
     parser.add_argument("--valid_pct",  type=float, default=0.10, help="Fraction of data for validation")
-    parser.add_argument("--results_out", default="evaluation_results.json", help="JSON file to save evaluation results to")
+    parser.add_argument("--results_out",  default="evaluation_results.json", help="JSON file to save eval results")
+    parser.add_argument("--training_log", default="training_log.json", help="JSON file to save training history")
     return parser.parse_args()
 
 
